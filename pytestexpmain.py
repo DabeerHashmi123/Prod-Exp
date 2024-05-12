@@ -56,9 +56,8 @@ class MainWindow(QMainWindow):
     def __init__(self, pth):
         print("init")
         super().__init__()
-        my_path = pth
         
-        dir_path = my_path
+        dir_path = pth
         db_path = dir_path + "\\P-E-N-S-main\\new_database1.db"
         print(db_path)
         if not os.path.exists(db_path):
