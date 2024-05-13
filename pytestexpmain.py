@@ -1,3 +1,13 @@
+import subprocess
+
+required_libraries = ["PyQt5", "openpyxl", "fuzzywuzzy", "win10toast"]
+
+try:
+    for lib in required_libraries:
+        subprocess.check_call([sys.executable, "-m", "pip", "install","--upgrade", lib])
+    print("All required libraries installed successfully.")
+except Exception as e:
+    print(f"An error occurred while installing required libraries: {str(e)}")
 import sys
 import os
 from PyQt5.QtWidgets import QApplication, QAbstractScrollArea,QMainWindow, QAction, QToolBar, QMessageBox, QStatusBar, QTableWidget, QTableWidgetItem, QFileDialog, QInputDialog, QWidget, QVBoxLayout, QPushButton, QLabel, QHBoxLayout, QLineEdit,QListWidgetItem,QListWidget,QDialog,QAbstractItemView
