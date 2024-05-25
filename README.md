@@ -11,7 +11,7 @@ The product expiry alert system is a proposed solution that will help individual
 To run; Clone the repository, run the main.py file with the icon and Database files in the folder. 
 Prerequisite: Python installed, pyqt5 (pip install pyqt5), win10toast (pip install win10toast).
 
-#changes made in this update 
+# changes made in this update 
 1)Improved search module 
 2)Improved delete function 
 3)Improved import and load function
