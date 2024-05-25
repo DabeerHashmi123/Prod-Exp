@@ -1,16 +1,6 @@
-import subprocess
-
-required_libraries = ["PyQt5", "openpyxl", "fuzzywuzzy", "win10toast"]
-
-try:
-    for lib in required_libraries:
-        subprocess.check_call([sys.executable, "-m", "pip", "install","--upgrade", lib])
-    print("All required libraries installed successfully.")
-except Exception as e:
-    print(f"An error occurred while installing required libraries: {str(e)}")
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QAbstractScrollArea,QMainWindow, QAction, QToolBar, QMessageBox, QStatusBar, QTableWidget, QTableWidgetItem, QFileDialog, QInputDialog, QWidget, QVBoxLayout, QPushButton, QLabel, QHBoxLayout, QLineEdit,QListWidgetItem,QListWidget,QDialog,QAbstractItemView
+from PyQt5.QtWidgets import QApplication, QAbstractScrollArea,QMainWindow, QAction, QToolBar, QMessageBox, QStatusBar, QTableWidget, QTableWidgetItem, QFileDialog, QInputDialog, QWidget, QVBoxLayout, QPushButton, QLabel, QHBoxLayout, QLineEdit,QListWidgetItem,QListWidget,QDialog,QAbstractItemView,QDateEdit
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import QTimer, QDate
 from win10toast import ToastNotifier
@@ -79,7 +69,7 @@ class MainWindow(QMainWindow):
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                                     barcode TEXT,
                                     product_name TEXT,
-                                    quantity INTEGER,
+                                    quantity TEXT,
                                     vendor TEXT,
                                     expiry_date DATE
                                     )''')
@@ -209,90 +199,99 @@ class MainWindow(QMainWindow):
     }
 """)
 
-    def import_data(self):
+    def import_data(self) -> None:
+     """Prompt for file selection and import data from Excel file."""
+     file_path, _ = QFileDialog.getOpenFileName(
+        self, "Select File", "", "Excel Files (*.xlsx *.xls)")
+
+     if file_path:
+        workbook = load_workbook(filename=file_path)
+        sheet = workbook.active
+
+        # Define expected column names
+        expected_columns = {'Barcode', 'Product Name', 'Quantity', 'Vendor'}
+
+        # Extract actual column names from the header row
+        header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+        actual_columns = set(header_row)
+
+        # Match actual column names to expected column names
+        column_mapping = {}
+        for expected_column in expected_columns:
+            matched_column, _ = fw_process.extractOne(expected_column, actual_columns)
+            if matched_column:
+                column_mapping[expected_column] = header_row.index(matched_column)
+            else:
+                QMessageBox.warning(
+                    self, "Warning", f"Could not find a match for '{expected_column}' column.")
+
+        # Check if all expected columns have been matched
+        if len(column_mapping) < len(expected_columns):
+            QMessageBox.critical(
+                self, "Error", "Could not find matches for all required columns "
+                                "in the Excel file.")
+            return  # Exit the function if not all columns are matched
+
+        # Proceed with data extraction and import using column_mapping
         try:
-            print("import data")
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "Select File", "", "Excel Files (*.xlsx *.xls)")
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                barcode = row[column_mapping['Barcode']]
+                product_name = row[column_mapping['Product Name']]
+                quantity = row[column_mapping['Quantity']]
+                vendor = row[column_mapping['Vendor']]
+                expiry_date = None  # Set expiry_date to None
 
-            if file_path:
-                workbook = load_workbook(filename=file_path)
-                sheet = workbook.active
-
-                # Define expected column names
-                expected_columns = {'Barcode', 'Product Name', 'Quantity', 'Vendor', 'Expiry Date'}
-
-                # Extract actual column names from the header row
-                header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
-                actual_columns = set(header_row)
-
-                # Match actual column names to expected column names
-                column_mapping = {}
-                for expected_column in expected_columns:
-                    matched_column, _ = fw_process.extractOne(expected_column, actual_columns)
-                    if matched_column:
-                        column_mapping[expected_column] = header_row.index(matched_column) + 1
-                    else:
-                        QMessageBox.warning(
-                            self, "Warning", f"Could not find a match for '{expected_column}' column.")
-
-                # Check if all expected columns have been matched
-                if len(column_mapping) < len(expected_columns):
-                    QMessageBox.critical(
-                        self, "Error", "Could not find matches for all required columns "
-                                        "in the Excel file.")
-                    return
-
-                # Proceed with data extraction and import using column_mapping
-                for row in sheet.iter_rows(min_row=2, values_only=True):
-                    barcode = row[column_mapping.get('Barcode') - 1]
-                    product_name = row[column_mapping.get('Product Name') - 1]
-                    quantity = row[column_mapping.get('Quantity') - 1]
-                    vendor = row[column_mapping.get('Vendor') - 1]
-                    expiry_date = row[column_mapping.get('Expiry Date') - 1]  # Assuming expiry_date is fetched as a date object
-                    self.cur.execute(
-                        "INSERT INTO products (barcode, product_name, quantity, vendor, expiry_date) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (barcode, product_name, quantity, vendor, expiry_date))
-
-                self.conn.commit()
-                self.load_data()
-                QMessageBox.information(self, "Success", "Data imported successfully.")
-
+                self.cur.execute(
+                    "INSERT INTO products (barcode, product_name, quantity, vendor, expiry_date) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (barcode, product_name, quantity, vendor, expiry_date))
+            self.conn.commit()
+            self.load_data()  # Load data after all rows have been inserted
+            QMessageBox.information(self, "Success", "Data imported successfully.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
 
+
     def search(self) -> None:
-        """Real-time search for products."""
-        print("search")
-        search_text, ok_pressed = QInputDialog.getText(self, "Search", "Enter text to search:")
-        if ok_pressed:
-            search_text = search_text.strip().lower()  # Convert search text to lowercase and remove leading/trailing spaces
-            if search_text:
-                found = False
-                for row in range(self.tableWidget.rowCount()):
-                    for column in range(self.tableWidget.columnCount()):
-                        item = self.tableWidget.item(row, column)
-                        if item and search_text in item.text().lower():
-                            self.tableWidget.selectRow(row)
-                            self.tableWidget.scrollToItem(item, QAbstractItemView.PositionAtTop)
-                            found = True
-                            break  # Stop searching in this row after finding the first match
-                    if found:
-                        break  # Stop searching after finding the first match
-                if not found:
-                    QMessageBox.information(self, "Search Result", "No matching product found.")
+     """Enhanced real-time search for products."""
+     search_text, ok_pressed = QInputDialog.getText(self, "Search", "Enter text to search:")
+     if ok_pressed:
+        search_text = search_text.strip().lower()  # Convert search text to lowercase and remove leading/trailing spaces
+        if search_text:
+            self.tableWidget.clearSelection()  # Clear previous selections
+
+            # Clear previous highlights
+            for row in range(self.tableWidget.rowCount()):
+                for column in range(self.tableWidget.columnCount()):
+                    item = self.tableWidget.item(row, column)
+                    if item:
+                        item.setBackground(Qt.white)  # Reset background to white (or default color)
+
+            found = False
+            matches = 0
+            for row in range(self.tableWidget.rowCount()):
+                for column in range(self.tableWidget.columnCount()):
+                    item = self.tableWidget.item(row, column)
+                    if item and search_text in item.text().lower():
+                        item.setBackground(Qt.yellow)  # Highlight the cell
+                        found = True
+                        matches += 1
+
+            if found:
+                QMessageBox.information(self, "Search Result", f"{matches} matching product(s) found.")
             else:
-                QMessageBox.information(self, "Search Result", "Please enter a search term.")
-    
+                QMessageBox.information(self, "Search Result", "No matching product found.")
+        else:
+            QMessageBox.information(self, "Search Result", "Please enter a search term.")
+
     def check_expiry(self):
         """Check products with near expiry dates and store them."""
         try:
-            print("check expiry")
             current_date = QDate.currentDate()
             expiry_threshold = current_date.addDays(7)
 
-            self.cur.execute("SELECT * FROM products WHERE expiry_date <= ?", (expiry_threshold.toString("yyyy-MM-dd"),))
+            self.cur.execute("SELECT * FROM products WHERE expiry_date <= ? AND expiry_date != '1752-09-14'", 
+                         (expiry_threshold.toString("yyyy-MM-dd"),))
             self.near_expiry_products = self.cur.fetchall()
 
             if self.near_expiry_products:
@@ -302,40 +301,70 @@ class MainWindow(QMainWindow):
             print(f"Error checking expiry: {e}")
 
     def delete_product(self) -> None:
-        """Delete a product from the table and database."""
-        print("delete product")
-        selected_items = self.tableWidget.selectedItems()
-        if selected_items:
-            id_to_delete = selected_items[0].text()
-            try:
-                self.cur.execute("DELETE FROM products WHERE id = ?", (id_to_delete,))
-                self.conn.commit()
-                self.load_data()
-                QMessageBox.information(self, "Success", "Product deleted successfully.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
+     """Delete selected products from the table and database."""
+     selected_rows = list(set(index.row() for index in self.tableWidget.selectedIndexes()))
+     if selected_rows:
+        ids_to_delete = []
+        for row in selected_rows:
+            item = self.tableWidget.item(row, 0)  # Assuming the ID is in the first column
+            if item:
+                ids_to_delete.append(item.text())
+
+        if ids_to_delete:
+            confirmation = QMessageBox.question(
+                self, "Confirm Delete",
+                f"Are you sure you want to delete {len(ids_to_delete)} selected products?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if confirmation == QMessageBox.Yes:
+                try:
+                    self.cur.executemany("DELETE FROM products WHERE id = ?", [(id,) for id in ids_to_delete])
+                    self.conn.commit()
+                    self.load_data()
+                    QMessageBox.information(self, "Success", "Selected products deleted successfully.")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
         else:
-            QMessageBox.warning(self, "Warning", "Please select a product to delete.")
+            QMessageBox.warning(self, "Warning", "No valid product IDs found for deletion.")
+     else:
+        QMessageBox.warning(self, "Warning", "Please select products to delete.")
 
     def load_data(self) -> None:
      """Load non-empty data from the database into the table widget."""
      try:
-        print("load data")
-        self.cur.execute("SELECT * FROM products WHERE barcode IS NOT NULL AND product_name IS NOT NULL AND quantity IS NOT NULL AND vendor IS NOT NULL AND expiry_date IS NOT NULL")
+        self.cur.execute("SELECT * FROM products WHERE barcode IS NOT NULL AND product_name IS NOT NULL AND quantity IS NOT NULL AND vendor IS NOT NULL")
         data = self.cur.fetchall()
         self.tableWidget.setRowCount(0)
         for row_number, row_data in enumerate(data):
             self.tableWidget.insertRow(row_number)
-            for column_number, data in enumerate(row_data):
-                item = QTableWidgetItem(str(data))
-                self.tableWidget.setItem(row_number, column_number, item)
+            for column_number, item_data in enumerate(row_data):
+                if column_number == 5:  # Assuming the expiry_date column index is 5
+                    if item_data is None or item_data == "1752-09-14":  # Check if date is default or None
+                        item_data = ""
+                    date_obj = QDate.fromString(item_data, "yyyy-MM-dd")
+                    date_edit = QDateEdit(date_obj)
+                    date_edit.setDisplayFormat("yyyy-MM-dd")
+                    date_edit.setCalendarPopup(True)
+                    date_edit.dateChanged.connect(lambda date, row=row_number: self.update_expiry_date(date, row))
+                    self.tableWidget.setCellWidget(row_number, column_number, date_edit)
+                else:
+                    item = QTableWidgetItem(str(item_data))
+                    self.tableWidget.setItem(row_number, column_number, item)
      except Exception as e:
         QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
-        print("error: " + e)
+
+    def update_expiry_date(self, new_date, row):
+     """Update the expiry date in the database when changed in the table."""
+     try:
+        item = self.tableWidget.item(row, 0)  # Assuming the ID column index is 0
+        product_id = int(item.text())
+        self.cur.execute("UPDATE products SET expiry_date = ? WHERE id = ?", (new_date.toString("yyyy-MM-dd"), product_id))
+        self.conn.commit()
+     except Exception as e:
+        QMessageBox.critical(self, "Error", f"An error occurred while updating expiry date: {str(e)}")
 
     def refresh_data(self) -> None:
         """Clear the table and reload data from the database."""
-        print("refresh data")
         confirmation = QMessageBox.question(self, "Confirmation", "Are you sure you want to refresh and clear all data?",
                                              QMessageBox.Yes | QMessageBox.No)
         if confirmation == QMessageBox.Yes:
@@ -349,9 +378,8 @@ class MainWindow(QMainWindow):
     
     def show_near_expiry_list(self):
        try:
-        print("show near expiry")
         current_date = QDate.currentDate()
-        expiry_threshold = current_date.addDays(7)
+        expiry_threshold = current_date.addDays(15)
 
         self.cur.execute("SELECT * FROM products WHERE expiry_date <= ?", (expiry_threshold.toString("yyyy-MM-dd"),))
         data = self.cur.fetchall()
