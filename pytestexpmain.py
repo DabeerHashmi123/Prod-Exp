@@ -163,12 +163,12 @@ class MainWindow(QMainWindow):
     QTableWidget QHeaderView::section {
         background-color: #3c486a; /* Dark blue-gray */
     color: #fff; /* Text color */
-    padding: 8px;
+    padding: 5px;
     border-radius: 0;
     }
 
     QTableWidget::item {
-        padding: 10px;
+        padding: 5px;
     }
 
     QAction {
